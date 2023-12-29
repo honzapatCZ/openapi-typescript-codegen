@@ -15,7 +15,7 @@ export class ApiError extends Error {
     public readonly body: any;
     public readonly request: ApiRequestOptions;
 
-    constructor(request: ApiRequestOptions, response: ApiResult, message: string) {
+    constructor(request: ApiRequestOptions, response: ApiResult<any>, message: string) {
         super(message);
 
         this.name = 'ApiError';
@@ -44,6 +44,7 @@ export type ApiRequestOptions = {
     readonly formData?: Record<string, any>;
     readonly body?: any;
     readonly mediaType?: string;
+    readonly responseType?: 'blob';
     readonly responseHeader?: string;
     readonly errors?: Record<number, string>;
 };
@@ -55,12 +56,13 @@ exports[`v2 should generate: test/generated/v2/core/ApiResult.ts 1`] = `
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type ApiResult = {
+export type ApiResult<T> = {
     readonly url: string;
     readonly ok: boolean;
     readonly status: number;
     readonly statusText: string;
-    readonly body: any;
+    readonly body: T;
+    readonly header: string | undefined;
 };
 "
 `;
@@ -468,7 +470,7 @@ export const getResponseHeader = (response: Response, responseHeader?: string): 
     return undefined;
 };
 
-export const getResponseBody = async (response: Response): Promise<any> => {
+export const getResponseBody = async (response: Response, options: ApiRequestOptions): Promise<any> => {
     if (response.status !== 204) {
         try {
             const contentType = response.headers.get('Content-Type');
@@ -477,6 +479,8 @@ export const getResponseBody = async (response: Response): Promise<any> => {
                 const isJSON = jsonTypes.some(type => contentType.toLowerCase().startsWith(type));
                 if (isJSON) {
                     return await response.json();
+                } else if (options.responseType === 'blob') {
+                    return await response.blob();
                 } else {
                     return await response.text();
                 }
@@ -488,7 +492,7 @@ export const getResponseBody = async (response: Response): Promise<any> => {
     return undefined;
 };
 
-export const catchErrorCodes = (options: ApiRequestOptions, result: ApiResult): void => {
+export const catchErrorCodes = (options: ApiRequestOptions, result: ApiResult<any>): void => {
     const errors: Record<number, string> = {
         400: 'Bad Request',
         401: 'Unauthorized',
@@ -523,13 +527,13 @@ export const catchErrorCodes = (options: ApiRequestOptions, result: ApiResult): 
 };
 
 /**
- * Request method
+ * Request method to get ApiResult
  * @param config The OpenAPI configuration object
  * @param options The request options from the service
- * @returns CancelablePromise<T>
+ * @returns CancelablePromise<ApiResult<T>>
  * @throws ApiError
  */
-export const request = <T>(config: OpenAPIConfig, options: ApiRequestOptions): CancelablePromise<T> => {
+export const requestApiResult = <T>(config: OpenAPIConfig, options: ApiRequestOptions): CancelablePromise<ApiResult<T>> => {
     return new CancelablePromise(async (resolve, reject, onCancel) => {
         try {
             const url = getUrl(config, options);
@@ -539,20 +543,41 @@ export const request = <T>(config: OpenAPIConfig, options: ApiRequestOptions): C
 
             if (!onCancel.isCancelled) {
                 const response = await sendRequest(config, options, url, body, formData, headers, onCancel);
-                const responseBody = await getResponseBody(response);
+                const responseBody = await getResponseBody(response, options);
                 const responseHeader = getResponseHeader(response, options.responseHeader);
 
-                const result: ApiResult = {
+                const result: ApiResult<T> = {
                     url,
                     ok: response.ok,
                     status: response.status,
                     statusText: response.statusText,
-                    body: responseHeader ?? responseBody,
+                    body: responseBody,
+                    header: responseHeader,
                 };
 
                 catchErrorCodes(options, result);
 
-                resolve(result.body);
+                resolve(result);
+            }
+        } catch (error) {
+            reject(error);
+        }
+    });
+};
+
+/**
+ * Request method
+ * @param config The OpenAPI configuration object
+ * @param options The request options from the service
+ * @returns CancelablePromise<T>
+ * @throws ApiError
+ */
+export const request = <T>(config: OpenAPIConfig, options: ApiRequestOptions): CancelablePromise<T> => {
+    return new CancelablePromise(async (resolve, reject, onCancel) => {
+        try {
+            if (!onCancel.isCancelled) {
+                const result = await requestApiResult<T>(config, options)
+                resolve(result.body)
             }
         } catch (error) {
             reject(error);
@@ -2336,8 +2361,10 @@ exports[`v2 should generate: test/generated/v2/services/CollectionFormatService.
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class CollectionFormatService {
     /**
      * @param parameterArrayCsv This is an array parameter that is sent as csv format (comma-separated values)
@@ -2377,8 +2404,10 @@ exports[`v2 should generate: test/generated/v2/services/ComplexService.ts 1`] = 
 /* eslint-disable */
 import type { ModelWithString } from '../models/ModelWithString';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class ComplexService {
     /**
      * @param parameterObject Parameter containing object
@@ -2419,8 +2448,10 @@ exports[`v2 should generate: test/generated/v2/services/DefaultService.ts 1`] = 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class DefaultService {
     /**
      * @throws ApiError
@@ -2442,8 +2473,10 @@ exports[`v2 should generate: test/generated/v2/services/DefaultsService.ts 1`] =
 /* eslint-disable */
 import type { ModelWithString } from '../models/ModelWithString';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class DefaultsService {
     /**
      * @param parameterString This is a simple string with default value
@@ -2549,8 +2582,10 @@ exports[`v2 should generate: test/generated/v2/services/DescriptionsService.ts 1
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class DescriptionsService {
     /**
      * @param parameterWithBreaks Testing multiline comments in string: First line
@@ -2595,8 +2630,10 @@ exports[`v2 should generate: test/generated/v2/services/DuplicateService.ts 1`] 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class DuplicateService {
     /**
      * @throws ApiError
@@ -2644,8 +2681,10 @@ exports[`v2 should generate: test/generated/v2/services/ErrorService.ts 1`] = `
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class ErrorService {
     /**
      * @param status Status code to return
@@ -2679,15 +2718,17 @@ exports[`v2 should generate: test/generated/v2/services/HeaderService.ts 1`] = `
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class HeaderService {
     /**
-     * @returns string Successful response
+     * @returns ApiResult<any> Successful response
      * @throws ApiError
      */
-    public static callWithResultFromHeader(): CancelablePromise<string> {
-        return __request(OpenAPI, {
+    public callWithResultFromHeader(): CancelablePromise<ApiResult<any>> {
+        return __requestApiResult(OpenAPI, {
             method: 'POST',
             url: '/api/v{api-version}/header',
             responseHeader: 'operation-location',
@@ -2697,8 +2738,25 @@ export class HeaderService {
             },
         });
     }
-}
-"
+
+    /**
+     * @returns ApiResult<binary> Successful response
+     * @throws ApiError
+     */
+    public callWithResultFromContentAndHeader(): CancelablePromise<ApiResult<Blob>> {
+        return __requestApiResult(OpenAPI, {
+            method: 'POST',
+            url: '/api/v{api-version}/content/header',
+            responseType: 'blob',
+            responseHeader: 'content-disposition',
+            errors: {
+                400: \`400 server error\`,
+                500: \`500 server error\`,
+            },
+        });
+    }
+
+}"
 `;
 
 exports[`v2 should generate: test/generated/v2/services/MultipleTags1Service.ts 1`] = `
@@ -2707,8 +2765,10 @@ exports[`v2 should generate: test/generated/v2/services/MultipleTags1Service.ts 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class MultipleTags1Service {
     /**
      * @returns void
@@ -2740,8 +2800,10 @@ exports[`v2 should generate: test/generated/v2/services/MultipleTags2Service.ts 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class MultipleTags2Service {
     /**
      * @returns void
@@ -2773,8 +2835,10 @@ exports[`v2 should generate: test/generated/v2/services/MultipleTags3Service.ts 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class MultipleTags3Service {
     /**
      * @returns void
@@ -2796,8 +2860,10 @@ exports[`v2 should generate: test/generated/v2/services/NoContentService.ts 1`] 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+import { requestApiResult as __requestApiResult } from '../core/request';
 export class NoContentService {
     /**
      * @returns void
@@ -2819,8 +2885,10 @@ exports[`v2 should generate: test/generated/v2/services/ParametersService.ts 1`]
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class ParametersService {
     /**
      * @param parameterHeader This is the parameter that goes into the header
@@ -2910,8 +2978,10 @@ import type { ModelThatExtends } from '../models/ModelThatExtends';
 import type { ModelThatExtendsExtends } from '../models/ModelThatExtendsExtends';
 import type { ModelWithString } from '../models/ModelWithString';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class ResponseService {
     /**
      * @returns ModelWithString Message for default response
@@ -2970,8 +3040,10 @@ exports[`v2 should generate: test/generated/v2/services/SimpleService.ts 1`] = `
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class SimpleService {
     /**
      * @throws ApiError
@@ -3046,8 +3118,10 @@ exports[`v2 should generate: test/generated/v2/services/TypesService.ts 1`] = `
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class TypesService {
     /**
      * @param parameterArray This is an array parameter
@@ -3110,7 +3184,7 @@ export class ApiError extends Error {
     public readonly body: any;
     public readonly request: ApiRequestOptions;
 
-    constructor(request: ApiRequestOptions, response: ApiResult, message: string) {
+    constructor(response: ApiResult, message: string) {
         super(message);
 
         this.name = 'ApiError';
@@ -3139,6 +3213,7 @@ export type ApiRequestOptions = {
     readonly formData?: Record<string, any>;
     readonly body?: any;
     readonly mediaType?: string;
+    readonly responseType?: 'blob';
     readonly responseHeader?: string;
     readonly errors?: Record<number, string>;
 };
@@ -3150,14 +3225,13 @@ exports[`v3 should generate: test/generated/v3/core/ApiResult.ts 1`] = `
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-export type ApiResult = {
+export type ApiResult<T> = {
     readonly url: string;
     readonly ok: boolean;
     readonly status: number;
     readonly statusText: string;
     readonly body: any;
-};
-"
+};"
 `;
 
 exports[`v3 should generate: test/generated/v3/core/CancelablePromise.ts 1`] = `
@@ -3563,7 +3637,7 @@ export const getResponseHeader = (response: Response, responseHeader?: string): 
     return undefined;
 };
 
-export const getResponseBody = async (response: Response): Promise<any> => {
+const getResponseBody = async (response: Response): Promise<any> => {
     if (response.status !== 204) {
         try {
             const contentType = response.headers.get('Content-Type');
@@ -3572,6 +3646,8 @@ export const getResponseBody = async (response: Response): Promise<any> => {
                 const isJSON = jsonTypes.some(type => contentType.toLowerCase().startsWith(type));
                 if (isJSON) {
                     return await response.json();
+                } else if (options.responseType === 'blob') {
+                    return await response.blob();
                 } else {
                     return await response.text();
                 }
@@ -3583,7 +3659,7 @@ export const getResponseBody = async (response: Response): Promise<any> => {
     return undefined;
 };
 
-export const catchErrorCodes = (options: ApiRequestOptions, result: ApiResult): void => {
+const catchErrorCodes = (options: ApiRequestOptions, result: ApiResult): void => {
     const errors: Record<number, string> = {
         400: 'Bad Request',
         401: 'Unauthorized',
@@ -3618,13 +3694,13 @@ export const catchErrorCodes = (options: ApiRequestOptions, result: ApiResult): 
 };
 
 /**
- * Request method
+ * Request method to get ApiResult
  * @param config The OpenAPI configuration object
  * @param options The request options from the service
- * @returns CancelablePromise<T>
+ * @returns CancelablePromise<ApiResult<T>>
  * @throws ApiError
  */
-export const request = <T>(config: OpenAPIConfig, options: ApiRequestOptions): CancelablePromise<T> => {
+export const requestApiResult = <T>(config: OpenAPIConfig, options: ApiRequestOptions): CancelablePromise<ApiResult<T>> => {
     return new CancelablePromise(async (resolve, reject, onCancel) => {
         try {
             const url = getUrl(config, options);
@@ -3634,20 +3710,41 @@ export const request = <T>(config: OpenAPIConfig, options: ApiRequestOptions): C
 
             if (!onCancel.isCancelled) {
                 const response = await sendRequest(config, options, url, body, formData, headers, onCancel);
-                const responseBody = await getResponseBody(response);
+                const responseBody = await getResponseBody(response, options);
                 const responseHeader = getResponseHeader(response, options.responseHeader);
 
-                const result: ApiResult = {
+                const result: ApiResult<T> = {
                     url,
                     ok: response.ok,
                     status: response.status,
                     statusText: response.statusText,
-                    body: responseHeader ?? responseBody,
+                    body: responseBody,
+                    header: responseHeader,
                 };
 
                 catchErrorCodes(options, result);
 
-                resolve(result.body);
+                resolve(result);
+            }
+        } catch (error) {
+            reject(error);
+        }
+    });
+};
+
+/**
+ * Request method
+ * @param config The OpenAPI configuration object
+ * @param options The request options from the service
+ * @returns CancelablePromise<T>
+ * @throws ApiError
+ */
+export const request = <T>(config: OpenAPIConfig, options: ApiRequestOptions): CancelablePromise<T> => {
+    return new CancelablePromise(async (resolve, reject, onCancel) => {
+        try {
+            if (!onCancel.isCancelled) {
+                const result = await requestApiResult<T>(config, options)
+                resolve(result.body)
             }
         } catch (error) {
             reject(error);
@@ -6367,8 +6464,10 @@ exports[`v3 should generate: test/generated/v3/services/CollectionFormatService.
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class CollectionFormatService {
     /**
      * @param parameterArrayCsv This is an array parameter that is sent as csv format (comma-separated values)
@@ -6411,8 +6510,10 @@ import type { ModelWithDictionary } from '../models/ModelWithDictionary';
 import type { ModelWithEnum } from '../models/ModelWithEnum';
 import type { ModelWithString } from '../models/ModelWithString';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class ComplexService {
     /**
      * @param parameterObject Parameter containing object
@@ -6485,8 +6586,10 @@ exports[`v3 should generate: test/generated/v3/services/DefaultService.ts 1`] = 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class DefaultService {
     /**
      * @throws ApiError
@@ -6508,8 +6611,10 @@ exports[`v3 should generate: test/generated/v3/services/DefaultsService.ts 1`] =
 /* eslint-disable */
 import type { ModelWithString } from '../models/ModelWithString';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class DefaultsService {
     /**
      * @param parameterString This is a simple string with default value
@@ -6616,37 +6721,10 @@ exports[`v3 should generate: test/generated/v3/services/DeprecatedService.ts 1`]
 /* eslint-disable */
 import type { DeprecatedModel } from '../models/DeprecatedModel';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
-export class DeprecatedService {
-    /**
-     * @deprecated
-     * @param parameter This parameter is deprecated
-     * @throws ApiError
-     */
-    public static deprecatedCall(
-        parameter: DeprecatedModel | null,
-    ): CancelablePromise<void> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/api/v{api-version}/parameters/deprecated',
-            headers: {
-                'parameter': parameter,
-            },
-        });
-    }
-}
-"
-`;
 
-exports[`v3 should generate: test/generated/v3/services/DescriptionsService.ts 1`] = `
-"/* generated using openapi-typescript-codegen -- do no edit */
-/* istanbul ignore file */
-/* tslint:disable */
-/* eslint-disable */
-import type { CancelablePromise } from '../core/CancelablePromise';
-import { OpenAPI } from '../core/OpenAPI';
-import { request as __request } from '../core/request';
 export class DescriptionsService {
     /**
      * @param parameterWithBreaks Testing multiline comments in string: First line
@@ -6691,8 +6769,10 @@ exports[`v3 should generate: test/generated/v3/services/DuplicateService.ts 1`] 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class DuplicateService {
     /**
      * @throws ApiError
@@ -6740,8 +6820,10 @@ exports[`v3 should generate: test/generated/v3/services/ErrorService.ts 1`] = `
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class ErrorService {
     /**
      * @param status Status code to return
@@ -6776,8 +6858,10 @@ exports[`v3 should generate: test/generated/v3/services/FormDataService.ts 1`] =
 /* eslint-disable */
 import type { ModelWithString } from '../models/ModelWithString';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class FormDataService {
     /**
      * @param parameter This is a reusable parameter
@@ -6808,15 +6892,17 @@ exports[`v3 should generate: test/generated/v3/services/HeaderService.ts 1`] = `
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class HeaderService {
     /**
-     * @returns string Successful response
+     * @returns ApiResult<any> Successful response
      * @throws ApiError
      */
-    public static callWithResultFromHeader(): CancelablePromise<string> {
-        return __request(OpenAPI, {
+    public callWithResultFromHeader(): CancelablePromise<ApiResult<any>> {
+        return __requestApiResult(OpenAPI, {
             method: 'POST',
             url: '/api/v{api-version}/header',
             responseHeader: 'operation-location',
@@ -6826,8 +6912,8 @@ export class HeaderService {
             },
         });
     }
-}
-"
+
+}"
 `;
 
 exports[`v3 should generate: test/generated/v3/services/MultipartService.ts 1`] = `
@@ -6837,8 +6923,10 @@ exports[`v3 should generate: test/generated/v3/services/MultipartService.ts 1`] 
 /* eslint-disable */
 import type { ModelWithString } from '../models/ModelWithString';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class MultipartService {
     /**
      * @param formData
@@ -6883,8 +6971,10 @@ exports[`v3 should generate: test/generated/v3/services/MultipleTags1Service.ts 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class MultipleTags1Service {
     /**
      * @returns void
@@ -6916,8 +7006,10 @@ exports[`v3 should generate: test/generated/v3/services/MultipleTags2Service.ts 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class MultipleTags2Service {
     /**
      * @returns void
@@ -6949,8 +7041,10 @@ exports[`v3 should generate: test/generated/v3/services/MultipleTags3Service.ts 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class MultipleTags3Service {
     /**
      * @returns void
@@ -6972,8 +7066,10 @@ exports[`v3 should generate: test/generated/v3/services/NoContentService.ts 1`] 
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class NoContentService {
     /**
      * @returns void
@@ -6997,8 +7093,10 @@ exports[`v3 should generate: test/generated/v3/services/ParametersService.ts 1`]
 import type { ModelWithString } from '../models/ModelWithString';
 import type { Pageable } from '../models/Pageable';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class ParametersService {
     /**
      * @param parameterHeader This is the parameter that goes into the header
@@ -7136,8 +7234,10 @@ exports[`v3 should generate: test/generated/v3/services/RequestBodyService.ts 1`
 /* eslint-disable */
 import type { ModelWithString } from '../models/ModelWithString';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class RequestBodyService {
     /**
      * @param parameter This is a reusable parameter
@@ -7171,8 +7271,10 @@ import type { ModelThatExtends } from '../models/ModelThatExtends';
 import type { ModelThatExtendsExtends } from '../models/ModelThatExtendsExtends';
 import type { ModelWithString } from '../models/ModelWithString';
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class ResponseService {
     /**
      * @returns ModelWithString
@@ -7231,8 +7333,10 @@ exports[`v3 should generate: test/generated/v3/services/SimpleService.ts 1`] = `
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class SimpleService {
     /**
      * @throws ApiError
@@ -7307,8 +7411,10 @@ exports[`v3 should generate: test/generated/v3/services/TypesService.ts 1`] = `
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class TypesService {
     /**
      * @param parameterArray This is an array parameter
@@ -7362,8 +7468,10 @@ exports[`v3 should generate: test/generated/v3/services/UploadService.ts 1`] = `
 /* tslint:disable */
 /* eslint-disable */
 import type { CancelablePromise } from '../core/CancelablePromise';
+import type { ApiResult } from '../core/ApiResult';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
+
 export class UploadService {
     /**
      * @param file Supply a file reference for upload
